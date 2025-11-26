@@ -1,75 +1,106 @@
-"""Minimal Flask application setup for the SQLAlchemy assignment."""
 from flask import Flask, jsonify, request
-from flask_migrate import Migrate
-from flask_sqlalchemy import SQLAlchemy
-
-from config import Config
-
-# These extension instances are shared across the app and models
-# so that SQLAlchemy can bind to the application context when the
-# factory runs.
-db = SQLAlchemy()
-migrate = Migrate()
+from extensions import db, migrate
+from models import User, Post
 
 
-def create_app(test_config=None):
-    """Application factory used by Flask and the tests.
-
-    The optional ``test_config`` dictionary can override settings such as
-    the database URL to keep student tests isolated.
-    """
-
+def create_app():
     app = Flask(__name__)
-    app.config.from_object(Config)
-    if test_config:
-        app.config.update(test_config)
 
+    # Database config
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///blog.db"
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
 
-    # Import models here so SQLAlchemy is aware of them before migrations
-    # or ``create_all`` run. Students will flesh these out in ``models.py``.
-    import models  # noqa: F401
-
     @app.route("/")
     def index():
-        """Simple sanity check route."""
-
         return jsonify({"message": "Welcome to the Flask + SQLAlchemy assignment"})
 
+    # ---------------------------
+    # USERS
+    # ---------------------------
     @app.route("/users", methods=["GET", "POST"])
     def users():
-        """List or create users.
+        if request.method == "POST":
+            data = request.get_json()
 
-        TODO: Students should query ``User`` objects, serialize them to JSON,
-        and handle incoming POST data to create new users.
-        """
+            username = data.get("username")
+            email = data.get("email")
 
-        return (
-            jsonify({"message": "TODO: implement user listing/creation"}),
-            501,
-        )
+            if not username or not email:
+                return jsonify({"error": "username and email required"}), 400
 
+            user = User(username=username, email=email)
+            db.session.add(user)
+            db.session.commit()
+
+            return jsonify({"message": "User created", "id": user.id}), 201
+
+        # GET
+        users = User.query.all()
+        users_list = [
+            {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+            }
+            for user in users
+        ]
+
+        return jsonify(users_list), 200
+
+    # ---------------------------
+    # POSTS
+    # ---------------------------
     @app.route("/posts", methods=["GET", "POST"])
     def posts():
-        """List or create posts.
+        if request.method == "POST":
+            data = request.get_json()
 
-        TODO: Students should query ``Post`` objects, include user data, and
-        allow creating posts tied to a valid ``user_id``.
-        """
+            title = data.get("title")
+            content = data.get("content")
+            user_id = data.get("user_id")
 
-        return (
-            jsonify({"message": "TODO: implement post listing/creation"}),
-            501,
-        )
+            if not title or not content or not user_id:
+                return jsonify({"error": "title, content, user_id required"}), 400
+
+            user = User.query.get(user_id)
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            post = Post(title=title, content=content, user_id=user_id)
+            db.session.add(post)
+            db.session.commit()
+
+            return jsonify({
+                "message": "Post created successfully",
+                "id": post.id
+            }), 201
+
+        # GET
+        posts = Post.query.all()
+        posts_list = [
+            {
+                "id": post.id,
+                "title": post.title,
+                "content": post.content,
+                "author": {
+                    "id": post.author.id,
+                    "username": post.author.username,
+                    "email": post.author.email,
+                }
+            }
+            for post in posts
+        ]
+
+        return jsonify(posts_list), 200
 
     return app
 
 
-# Expose a module-level application for convenience with certain tools
-app = create_app()
-
-
+# Only executed when running "python app.py"
 if __name__ == "__main__":
-    # Running ``python app.py`` starts the development server.
+    app = create_app()
     app.run(debug=True)
