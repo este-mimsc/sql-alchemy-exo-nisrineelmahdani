@@ -3,12 +3,16 @@ from extensions import db, migrate
 from models import User, Post
 
 
-def create_app():
+def create_app(config=None):  # keep config parameter
     app = Flask(__name__)
 
-    # Database config
+    # Default database config
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///blog.db"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    # Apply overrides from autograder or tests
+    if config:
+        app.config.update(config)
 
     # Initialize extensions
     db.init_app(app)
